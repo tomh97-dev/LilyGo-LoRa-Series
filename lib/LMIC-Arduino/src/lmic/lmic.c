@@ -104,7 +104,7 @@ void os_wmsbf4 (xref2u1_t buf, u4_t v) {
 
 #if !defined(os_getBattLevel)
 u1_t os_getBattLevel (void) {
-    return MCMD_DEVS_BATT_NOINFO;
+    return MCMD_DEVS_EXT_POWER;
 }
 #endif
 
