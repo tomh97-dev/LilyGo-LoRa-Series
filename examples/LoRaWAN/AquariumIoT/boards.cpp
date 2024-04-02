@@ -95,7 +95,7 @@ void initBoard()
         u8g2->firstPage();
         do {
             u8g2->setFont(u8g2_font_inb19_mr);
-            u8g2->drawStr(0, 30, "X40 LoRa");
+            u8g2->drawStr(0, 30, "LoRa");
             u8g2->drawHLine(2, 35, 47);
             u8g2->drawHLine(3, 36, 47);
             u8g2->drawVLine(45, 32, 12);

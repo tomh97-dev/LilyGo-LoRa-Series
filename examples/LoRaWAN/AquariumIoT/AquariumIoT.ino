@@ -5,8 +5,9 @@ void setup()
 {
     initBoard();
     delay(1500);
-    Serial.println("LoRa Receiver");
+    Serial.println("LNS Connector");
     setupLMIC();
+    initWIFIAP();
 }
 
 void loop()

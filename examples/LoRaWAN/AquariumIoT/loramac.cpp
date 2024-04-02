@@ -3,10 +3,15 @@
 #include <hal/hal.h>
 #include "boards.h"
 #include "DallasTemperature.h"
+#include <WiFi.h>
+#include <WebServer.h>
 
 int scanTime = 5; //In seconds
 uint16_t beconUUID = 0xFEAA;
 #define ENDIAN_CHANGE_U16(x) ((((x)&0xFF00)>>8) + (((x)&0xFF)<<8))
+
+// Web server
+WebServer server(80);
 
 // LSB mode
 static const u1_t PROGMEM DEVEUI[8] = { 0x2D, 0x13, 0xB2, 0x6C, 0xBE, 0x35, 0xE7, 0x10 };
@@ -342,4 +347,49 @@ void loopLMIC(void)
 {
     os_runloop_once();
     updateJoiningAnimation();
+    server.handleClient();
+}
+
+void initWIFIAP()
+{
+    Serial.println(F("Starting WebServer example as AP..."));
+
+    // Setup ESP32 as an Access Point
+    WiFi.mode(WIFI_AP);
+
+    // Set your desired SSID and Password for the Access Point
+    const char* ap_ssid = "ESP32-AP";
+    const char* ap_password = "12345678";  // Use a stronger password for a real application
+
+    // Start the Access Point
+    WiFi.softAP(ap_ssid, ap_password);
+
+    // Optional: Set a static IP (if needed)
+    // IPAddress local_IP(192, 168, 1, 1);
+    // IPAddress gateway(192, 168, 1, 1);
+    // IPAddress subnet(255, 255, 255, 0);
+    // WiFi.softAPConfig(local_IP, gateway, subnet);
+
+    server.on("/style.css", HTTP_GET, []() {
+        File file = SD.open("/bootstrap.min.css");
+        if (!file) {
+            Serial.println("Failed to open file for reading");
+            server.send(404, "text/plain", "File not found");
+            return;
+        }
+        server.streamFile(file, "text/css");
+        file.close();
+    });
+    server.on("/", HTTP_GET, []() {
+        File file = SD.open("/index.html");
+        if (!file) {
+            Serial.println("Failed to open file for reading");
+            server.send(404, "text/plain", "File not found");
+            return;
+        }
+        server.streamFile(file, "text/html");
+        file.close();
+    });
+    server.enableCORS(true);
+    server.begin();
 }
