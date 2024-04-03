@@ -14,6 +14,148 @@
   <title>Payload Config</title>
 </head>
 
+<script>
+  function loadDefaultConfig() {
+    fetch('/getConfig')
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('battVoltage').value = data.batt;
+        // MAIN CONFIG
+        var alertTypeRadios = document.querySelectorAll('input[name="radio-alert"]');
+          alertTypeRadios.forEach(radio => {
+            if (radio.value === data.alertType) {
+              radio.checked = true;
+            }
+        });
+        var motionRadios = document.querySelectorAll('input[name="radio-motion"]');
+          motionRadios.forEach(radio => {
+            if (radio.value === data.motion) {
+              radio.checked = true;
+            }
+        });
+        var msgTypeRadios = document.querySelectorAll('input[name="radio-message"]');
+          msgTypeRadios.forEach(radio => {
+            if (radio.value === data.msgType) {
+              radio.checked = true;
+            }
+        });
+        var chargingRadios = document.querySelectorAll('input[name="radio-charge"]');
+          chargingRadios.forEach(radio => {
+            if (radio.value === data.charging) {
+              radio.checked = true;
+            }
+        });
+        var tagTypeRadios = document.querySelectorAll('input[name="radio-tag"]');
+          tagTypeRadios.forEach(radio => {
+            if (radio.value === data.tagType) {
+              radio.checked = true;
+            }
+        });
+        var activatedRadios = document.querySelectorAll('input[name="radio-state"]');
+          activatedRadios.forEach(radio => {
+            if (radio.value === data.activated) {
+              radio.checked = true;
+            }
+        });
+        // GPS CONFIG
+        document.getElementById('switch-gps').checked = data.gps.gpsEnabled;
+        document.getElementById('input-gps-lat').value = data.gps.lat;
+        document.getElementById('input-gps-lng').value = data.gps.lng;
+        document.getElementById('input-gps-hsd').value = data.gps.hsd;
+        // BLE CONFIG
+        document.getElementById('switch-ble').checked = data.ble.bleEnabled;
+        var bleModeRadios = document.querySelectorAll('input[name="radio-blemode"]');
+          bleModeRadios.forEach(radio => {
+            if (radio.value === data.ble.bleMode) {
+              radio.checked = true;
+            }
+        });
+        // WIFI CONFIG
+        document.getElementById('switch-wifi').checked = data.wifi.wifiEnabled;
+        var wifiModeRadios = document.querySelectorAll('input[name="radio-wifimode"]');
+          wifiModeRadios.forEach(radio => {
+            if (radio.value === data.wifi.wifiMode) {
+              radio.checked = true;
+            }
+        });
+      })
+      .catch((error) => {
+        console.error('Error:', error);
+      });
+  }
+  window.onload = loadDefaultConfig;
+  function fillDeviceLocation() {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(function(position) {
+        // Set the latitude and longitude
+        document.getElementById('input-gps-lat').value = position.coords.latitude.toFixed(6);
+        document.getElementById('input-gps-lng').value = position.coords.longitude.toFixed(6);
+
+        // Optional: Set the HSD if available
+        if (position.coords.accuracy) {
+          document.getElementById('input-gps-hsd').value = (position.coords.accuracy).toFixed(2);
+        }
+      }, function(error) {
+        console.error("Error Code = " + error.code + " - " + error.message);
+      },{enableHighAccuracy:true,maximumAge:600000});
+    } else {
+      alert("Geolocation is not supported by this browser.");
+      console.log("Geolocation is not supported by this browser.");
+    }
+  }
+  function setBatteryPercentage() {
+    var slider = document.getElementById('battVoltage').value;
+    var label = document.getElementById('percentageLabel');
+    label.innerText = slider + 'v';
+  }
+  function postConfigData() {
+    var data = {
+      batt: document.getElementById('battVoltage').value,
+      alertType: document.querySelector('input[name="radio-alert"]:checked').value,
+      motion: document.querySelector('input[name="radio-motion"]:checked').value,
+      msgType: document.querySelector('input[name="radio-message"]:checked').value,
+      charging: document.querySelector('input[name="radio-charge"]:checked').value,
+      tagType: document.querySelector('input[name="radio-tag"]:checked').value,
+      activated: document.querySelector('input[name="radio-state"]:checked').value,
+      gps: {
+        gpsEnabled: document.getElementById('switch-gps').checked,
+        lat: document.getElementById('input-gps-lat').value,
+        lng: document.getElementById('input-gps-lng').value,
+        hsd: document.getElementById('input-gps-hsd').value,
+      },
+      ble: {
+        bleEnabled: document.getElementById('switch-ble').checked,
+        bleMode: document.querySelector('input[name="radio-blemode"]:checked').value,
+      },
+      wifi: {
+        wifiEnabled: document.getElementById('switch-wifi').checked,
+        wifiMode: document.querySelector('input[name="radio-wifimode"]:checked').value,
+      }
+    };
+    fetch('/config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data)
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Network response was not ok ' + response.statusText);
+      }
+      return response;
+    })
+    .then(data => {
+      console.log('Success:', data);
+      alert("Config saved");
+    })
+    .catch((error) => {
+      console.error('Error:', error);
+      alert("Error saving config: " + error.message);
+    });
+  }
+</script>
+
 <body>
   <nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
     <div class="container-fluid">
@@ -52,7 +194,7 @@
               </div>
               <div class="row">
                   <div class="col-6">
-                      <input type="range" class="form-range" id="batteryPercentage" min="2.7" max="4.2" step="0.1">
+                      <input type="range" class="form-range" id="battVoltage" onchange="setBatteryPercentage();" min="2.7" max="4.2" step="0.1">
                   </div>
                   <div class="col-6">
                       <h6 id="percentageLabel">3.7v</h6>
@@ -66,11 +208,11 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-alert" id="radio-alert-none" autocomplete="off" checked>
+                <input type="radio" class="btn-check" name="radio-alert" id="radio-alert-none" value="0" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="radio-alert-none">None</label>
-                <input type="radio" class="btn-check" name="radio-alert" id="radio-alert-call" autocomplete="off">
+                <input type="radio" class="btn-check" name="radio-alert" id="radio-alert-call" value="1" autocomplete="off">
                 <label class="btn btn-outline-primary" for="radio-alert-call">Call</label>
-                <input type="radio" class="btn-check" name="radio-alert" id="radio-alert-fall" autocomplete="off">
+                <input type="radio" class="btn-check" name="radio-alert" id="radio-alert-fall" value="2" autocomplete="off">
                 <label class="btn btn-outline-primary" for="radio-alert-fall">Fall</label>
               </div>
               <!-- END -->
@@ -81,9 +223,9 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-motion" id="radio-motion-true" autocomplete="off" checked>
+                <input type="radio" class="btn-check" name="radio-motion" id="radio-motion-true" value="0" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="radio-motion-true">True</label>
-                <input type="radio" class="btn-check" name="radio-motion" id="radio-motion-false" autocomplete="off">
+                <input type="radio" class="btn-check" name="radio-motion" id="radio-motion-false" value="1" autocomplete="off">
                 <label class="btn btn-outline-primary" for="radio-motion-false">False</label>
               </div>
               <!-- END -->
@@ -94,9 +236,9 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-message" id="radio-message-normal" autocomplete="off" checked>
+                <input type="radio" class="btn-check" name="radio-message" id="radio-message-normal" value="0" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="radio-message-normal">Normal</label>
-                <input type="radio" class="btn-check" name="radio-message" id="radio-message-ble" autocomplete="off">
+                <input type="radio" class="btn-check" name="radio-message" id="radio-message-ble" value="1" autocomplete="off">
                 <label class="btn btn-outline-primary" for="radio-message-ble">BLE Exciter</label>
               </div>
               <!-- END -->
@@ -107,9 +249,9 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-charge" id="radio-charge-on" autocomplete="off">
+                <input type="radio" class="btn-check" name="radio-charge" id="radio-charge-on" value="0" autocomplete="off">
                 <label class="btn btn-outline-primary" for="radio-charge-on">On Charge</label>
-                <input type="radio" class="btn-check" name="radio-charge" id="radio-charge-off" autocomplete="off" checked>
+                <input type="radio" class="btn-check" name="radio-charge" id="radio-charge-off" value="1" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="radio-charge-off">Off Charge</label>
               </div>
               <!-- END -->
@@ -120,7 +262,7 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-tag" id="radio-tag-x40" autocomplete="off" checked>
+                <input type="radio" class="btn-check" name="radio-tag" id="radio-tag-x40" value="0" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="radio-tag-x40">X40</label>
               </div>
               <!-- END -->
@@ -131,10 +273,10 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-state" id="radio-state-active" autocomplete="off" checked>
-                <label class="btn btn-outline-primary" for="radio-state-active">Active</label>
-                <input type="radio" class="btn-check" name="radio-state" id="radio-state-inactive" autocomplete="off">
-                <label class="btn btn-outline-primary" for="radio-state-inactive">Deactivated</label>
+                <input type="radio" class="btn-check" name="radio-state" id="radio-state-active" value="0" autocomplete="off" checked>
+                <label class="btn btn-outline-primary" for="radio-state-active">Deactivated</label>
+                <input type="radio" class="btn-check" name="radio-state" id="radio-state-inactive" value="1" autocomplete="off">
+                <label class="btn btn-outline-primary" for="radio-state-inactive">Activated</label>
               </div>
               <!-- END -->
             </div>
@@ -156,6 +298,9 @@
                 <input class="form-check-input" type="checkbox" id="switch-gps" checked>
               </div>
               <!-- END -->
+            <div>
+              <button class="btn btn-primary" onclick="fillDeviceLocation();">Use device location</button>
+            </div>
               <!-- LATITUDE -->
               <div class="row">
                 <h6 class="card-title">Latitude</h6>
@@ -171,7 +316,7 @@
               <!-- HSD -->
               <div class="row">
                 <h6 class="card-title">HSD</h6>
-                <input type="text" class="form-control" placeholder="Default input" id="input-gps-hsd">
+                <input type="text" class="form-control" placeholder="7.00" id="input-gps-hsd">
               </div>
               <!-- END -->
             </div>
@@ -200,9 +345,9 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-blemode" id="radio-blemode-scanning" autocomplete="off" checked>
+                <input type="radio" class="btn-check" name="radio-blemode" id="radio-blemode-scanning" value="0" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="radio-blemode-scanning">Scanning</label>
-                <input type="radio" class="btn-check" name="radio-blemode" id="radio-blemode-manual" autocomplete="off">
+                <input type="radio" class="btn-check" name="radio-blemode" id="radio-blemode-manual" value="1" autocomplete="off">
                 <label class="btn btn-outline-primary" for="radio-blemode-manual">Manual</label>
               </div>
               <!-- END -->
@@ -306,9 +451,9 @@
                 </div>
               </div>
               <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="radio-wifimode" id="radio-wifimode-scanning" autocomplete="off" checked>
+                <input type="radio" class="btn-check" name="radio-wifimode" id="radio-wifimode-scanning" value="0" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="radio-wifimode-scanning">Scanning</label>
-                <input type="radio" class="btn-check" name="radio-wifimode" id="radio-wifimode-manual" autocomplete="off">
+                <input type="radio" class="btn-check" name="radio-wifimode" id="radio-wifimode-manual" value="1" autocomplete="off">
                 <label class="btn btn-outline-primary" for="radio-wifimode-manual">Manual</label>
               </div>
               <!-- END -->
@@ -477,6 +622,15 @@
       </div>
     </div>
   </section>
+  <div class="fixed-bottom bg-light border-top">
+    <div class="container">
+      <div class="row">
+        <div class="col text-center py-3">
+          <button class="btn btn-primary" onclick="postConfigData();">Save Config</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 
 </html>

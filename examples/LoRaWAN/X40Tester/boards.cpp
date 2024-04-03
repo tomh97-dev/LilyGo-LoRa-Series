@@ -56,6 +56,7 @@ void initBoard()
     initPMU();
 
 #ifdef HAS_SDCARD
+    delay(1500);
     pinMode(SDCARD_MISO, INPUT_PULLUP);
     SDSPI.begin(SDCARD_SCLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_CS);
     if (!SD.begin(SDCARD_CS, SDSPI)) {

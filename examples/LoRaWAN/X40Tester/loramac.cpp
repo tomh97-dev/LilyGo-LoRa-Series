@@ -173,56 +173,10 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     std::vector<BeaconData> beacons;
 public:
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-    //   Serial.printf("\n\n");
-    //   Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
-        BeaconData data = {advertisedDevice.getAddress().toString(), advertisedDevice.getRSSI()};
-        beacons.push_back(data);
-        std::string strServiceData = advertisedDevice.getServiceData();
-        uint8_t cServiceData[100];
-        strServiceData.copy((char *)cServiceData, strServiceData.length(), 0);
-
-       if (advertisedDevice.getServiceDataUUID().equals(BLEUUID(beconUUID))==true) {  // found Eddystone UUID
-        Serial.printf("is Eddystone: %d %s length %d\n", advertisedDevice.getServiceDataUUID().bitSize(), advertisedDevice.getServiceDataUUID().toString().c_str(),strServiceData.length());
-        if (cServiceData[0]==0x10) {
-           BLEEddystoneURL oBeacon = BLEEddystoneURL();
-           oBeacon.setData(strServiceData);
-           Serial.printf("Eddystone Frame Type (Eddystone-URL) ");
-           Serial.printf(oBeacon.getDecodedURL().c_str());
-        } else if (cServiceData[0]==0x20) {
-           BLEEddystoneTLM oBeacon = BLEEddystoneTLM();
-           oBeacon.setData(strServiceData);
-           Serial.printf("Eddystone Frame Type (Unencrypted Eddystone-TLM) \n");
-           Serial.printf(oBeacon.toString().c_str());
-        } else {
-          for (int i=0;i<strServiceData.length();i++) {
-            Serial.printf("[%X]",cServiceData[i]);
-          }
-        }
-        Serial.printf("\n");
-
-       } else {
-        if (advertisedDevice.haveManufacturerData()==true) {
-          std::string strManufacturerData = advertisedDevice.getManufacturerData();
-          
-          uint8_t cManufacturerData[100];
-          strManufacturerData.copy((char *)cManufacturerData, strManufacturerData.length(), 0);
-          
-          if (strManufacturerData.length()==25 && cManufacturerData[0] == 0x4C  && cManufacturerData[1] == 0x00 ) {
-            BLEBeacon oBeacon = BLEBeacon();
-            oBeacon.setData(strManufacturerData);
-            // Serial.printf("iBeacon Frame\n");
-            // Serial.printf("ID: %04X Major: %d Minor: %d UUID: %s Power: %d\n",oBeacon.getManufacturerId(),ENDIAN_CHANGE_U16(oBeacon.getMajor()),ENDIAN_CHANGE_U16(oBeacon.getMinor()),oBeacon.getProximityUUID().toString().c_str(),oBeacon.getSignalPower());
-          } else {
-
-            // Serial.printf("strManufacturerData: %d ",strManufacturerData.length());
-            for (int i=0;i<strManufacturerData.length();i++) {
-            //   Serial.printf("[%X]",cManufacturerData[i]);
-            }
-            // Serial.printf("\n");
-          }
-         } else {
-        //   Serial.printf("no Beacon Advertised ServiceDataUUID: %d %s \n", advertisedDevice.getServiceDataUUID().bitSize(), advertisedDevice.getServiceDataUUID().toString().c_str());
-         }
+        if (advertisedDevice.getServiceDataUUID().equals(BLEUUID(beconUUID))==true) {  // found Eddystone UUID
+            // Serial.printf("is Eddystone: %d %s length %d\n", advertisedDevice.getServiceDataUUID().bitSize(), advertisedDevice.getServiceDataUUID().toString().c_str(),strServiceData.length());
+                BeaconData data = {advertisedDevice.getAddress().toString(), advertisedDevice.getRSSI()};
+                beacons.push_back(data);
         }
     }
     void clearBeacons() {
@@ -447,8 +401,6 @@ void onEvent (ev_t ev)
         if (LMIC.dataLen) {
             // data received in rx slot after tx
             Serial.print(F("Data Received: "));
-            // Serial.write(LMIC.frame + LMIC.dataBeg, LMIC.dataLen);
-            // Serial.println();
             Serial.println(LMIC.dataLen);
             Serial.println(F(" bytes of payload"));
         }
@@ -629,7 +581,7 @@ void setupLMIC(void)
     // Start job
     LMIC_startJoining();
 
-    do_send(&sendjob);     // Will fire up also the join
+    do_send(&sendjob);
 }
 
 void Task1code(void * pvParameters){
@@ -716,6 +668,43 @@ void initWIFIAP()
             return;
         }
         server.streamFile(file, "text/html");
+        file.close();
+    });
+    server.on("/config", HTTP_POST, []() {
+        if (!server.hasArg("plain")) {
+            server.send(400, "text/plain", "Bad request");
+            return;
+        }
+        String body = server.arg("plain");
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body);
+        if (error) {
+            server.send(500, "text/plain", "Failed to parse JSON");
+            return;
+        }
+        // Open file for writing
+        File file = SD.open("/config.json", FILE_WRITE);
+        if (!file) {
+            server.send(500, "text/plain", "Failed to open file for writing");
+            return;
+        }
+        // Serialize JSON to file
+        if (serializeJson(doc, file) == 0) {
+            server.send(500, "text/plain", "Failed to write to file");
+            file.close();
+            return;
+        }
+        file.close();
+        server.send(200, "text/plain", "Configuration updated successfully");
+    });
+    server.on("/getConfig", HTTP_GET, []() {
+        File file = SD.open("/config.json");
+        if (!file) {
+            Serial.println("Failed to open file for reading");
+            server.send(404, "text/plain", "File not found");
+            return;
+        }
+        server.streamFile(file, "application/json");
         file.close();
     });
     server.enableCORS(true);
