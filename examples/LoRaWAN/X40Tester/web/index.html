@@ -20,12 +20,12 @@
       event.returnValue = '';
     });
 
-    function mouseDown() {
-      ws.send('{"led" : 1}');
+    function startLora() {
+      ws.send('{"action" : start}');
     }
 
-    function mouseUp() {
-      ws.send('{"led" : 0}');
+    function stopLora() {
+      ws.send('{"action" : stop}');
     }
 
     function WebSocketBegin() {
@@ -131,21 +131,20 @@
                     <th scope="row">Frame Count</th>
                     <td id="fCnt">Loading...</td>
                   </tr>
-                  <tr>
-                    <th scope="row">Uptime</th>
-                    <td>1m 30s</td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Battery</th>
-                    <td>100%</td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Wi-Fi Clients</th>
-                    <td>1</td>
-                  </tr>
                 </tbody>
               </table>
               <!-- END -->
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <div class="card bg-light m-2">
+            <div class="card-header">Controls</div>
+            <div class="card-body">
+              <button type="button" class="btn btn-success" onclick="startLora();">Start</button>
+              <button type="button" class="btn btn-danger" onclick="stopLora();">Stop</button>
             </div>
           </div>
         </div>
@@ -166,16 +165,6 @@
                 <tbody id="ble-table"></tbody>
               </table>
               <!-- END -->
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col">
-          <div class="card bg-light m-2">
-            <div class="card-header">Menu</div>
-            <div class="card-body">
-              <button type="button" class="btn btn-primary" onclick="location.href='/config';">Config</button>
             </div>
           </div>
         </div>

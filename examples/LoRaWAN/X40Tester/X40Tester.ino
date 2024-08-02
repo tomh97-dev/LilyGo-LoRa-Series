@@ -11,6 +11,7 @@ void setup()
     Serial.println("LoRa Receiver");
     setupLMIC();
     initWIFIAP();
+    initBLE();
     initWebsocket();
 
     xTaskCreatePinnedToCore(

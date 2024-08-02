@@ -359,7 +359,7 @@ void do_send(osjob_t *j)
             0x02, 0xaa, 0x45, 0x13, 0xd1, 0x81, 0x16, 0x02,
             0x90, 0xc7, 0xe7, 0xcf, 0x91, 0x12
         };
-
+// 0x4F, 0x14 (5 HSD) was 0x53, 0x05
         //
         scanForBLEBeacons();
         // scanForWifi();
@@ -401,7 +401,7 @@ void onEvent (ev_t ev)
         if (LMIC.dataLen) {
             // data received in rx slot after tx
             Serial.print(F("Data Received: "));
-            Serial.println(LMIC.dataLen);
+            Serial.println(LMIC.dataBeg-1);
             Serial.println(F(" bytes of payload"));
         }
         // Schedule next transmission
@@ -487,47 +487,6 @@ void onEvent (ev_t ev)
     webSocket.broadcastTXT(output);
 }
 
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-    JsonDocument doc;
-    String output;
-    switch(type) {
-        case WStype_DISCONNECTED:
-            Serial.printf("[%u] Disconnected!:\n", num);
-            break;
-        case WStype_CONNECTED:
-            {
-                IPAddress ip = webSocket.remoteIP(num);
-                Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-                 // SEND WEBSOCKET NOW
-            
-                doc["loraStatus"] = loraStatus;
-                doc["loraDebug"] = loraDebug;
-                doc["fCnt"] = LMIC.seqnoUp;
-                JsonArray array = doc.createNestedArray("ble");
-                JsonObject device1 = array.createNestedObject();
-                device1["id"] = 1;
-                device1["mac"] = "NO DATA";
-                device1["rssi"] = "NO DATA";
-                serializeJson(doc, output);
-                webSocket.broadcastTXT(output);
-            }
-            break;
-        case WStype_TEXT:
-            Serial.printf("[%u] get Text: %s\n", num, payload);
-            break;
-        case WStype_BIN:
-            Serial.printf("[%u] get Bin: %s\n", num, payload);
-            break;
-		case WStype_ERROR:			
-		case WStype_FRAGMENT_TEXT_START:
-		case WStype_FRAGMENT_BIN_START:
-		case WStype_FRAGMENT:
-		case WStype_FRAGMENT_FIN:
-			break;
-    }
-
-}
-
 void setupLMIC(void)
 {
     // LMIC init
@@ -568,12 +527,6 @@ void setupLMIC(void)
     Serial.println(F("APPKEY"));
     printArray(APPKEY, sizeof(APPKEY) / sizeof(APPKEY[0]), true);
 
-    // Init BLE
-    BLEDevice::init("");
-    pBLEScan = BLEDevice::getScan();
-    pBLEScan->setAdvertisedDeviceCallbacks(&myCallbacks);
-    pBLEScan->setActiveScan(true);
-
     //Init Wifi
     // WiFi.mode(WIFI_STA);
     // WiFi.disconnect();
@@ -582,6 +535,88 @@ void setupLMIC(void)
     LMIC_startJoining();
 
     do_send(&sendjob);
+}
+
+void stopLORA()
+{
+    JsonDocument doc;
+    String output;
+    doc["loraStatus"] = "Shutting down...";
+    doc["loraDebug"] = "Shutting down...";
+    doc["fCnt"] = 0;
+    JsonArray array = doc.createNestedArray("ble");
+    JsonObject device1 = array.createNestedObject();
+    device1["id"] = 1;
+    device1["mac"] = "NO DATA";
+    device1["rssi"] = "NO DATA";
+    serializeJson(doc, output);
+    webSocket.broadcastTXT(output);
+    LMIC_shutdown();
+}
+
+void startLORA()
+{
+    JsonDocument doc;
+    String output;
+    doc["loraStatus"] = "Starting Lora...";
+    doc["loraDebug"] = "Starting Lora...";
+    doc["fCnt"] = 0;
+    JsonArray array = doc.createNestedArray("ble");
+    JsonObject device1 = array.createNestedObject();
+    device1["id"] = 1;
+    device1["mac"] = "NO DATA";
+    device1["rssi"] = "NO DATA";
+    serializeJson(doc, output);
+    webSocket.broadcastTXT(output);
+    setupLMIC();
+}
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+    JsonDocument doc;
+    String output;
+    switch(type) {
+        case WStype_DISCONNECTED:
+            Serial.printf("[%u] Disconnected!:\n", num);
+            break;
+        case WStype_CONNECTED:
+            {
+                IPAddress ip = webSocket.remoteIP(num);
+                Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+                 // SEND WEBSOCKET NOW
+            
+                doc["loraStatus"] = loraStatus;
+                doc["loraDebug"] = loraDebug;
+                doc["fCnt"] = LMIC.seqnoUp;
+                JsonArray array = doc.createNestedArray("ble");
+                JsonObject device1 = array.createNestedObject();
+                device1["id"] = 1;
+                device1["mac"] = "NO DATA";
+                device1["rssi"] = "NO DATA";
+                serializeJson(doc, output);
+                webSocket.broadcastTXT(output);
+            }
+            break;
+        case WStype_TEXT:
+            Serial.printf("[%u] get Text: %s\n", num, payload);
+            deserializeJson(doc, payload);
+            if (doc.containsKey("action") && strcmp(doc["action"], "start") == 0) {
+                startLORA();
+            }
+            else if (doc.containsKey("action") && strcmp(doc["action"], "stop") == 0) {
+                stopLORA();
+            }
+            break;
+        case WStype_BIN:
+            Serial.printf("[%u] get Bin: %s\n", num, payload);
+            break;
+		case WStype_ERROR:			
+		case WStype_FRAGMENT_TEXT_START:
+		case WStype_FRAGMENT_BIN_START:
+		case WStype_FRAGMENT:
+		case WStype_FRAGMENT_FIN:
+			break;
+    }
+
 }
 
 void Task1code(void * pvParameters){
@@ -600,16 +635,25 @@ void Task2code(void * pvParameters){
   }
 }
 
+void initBLE()
+{
+    // Init BLE
+    BLEDevice::init("");
+    pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(&myCallbacks);
+    pBLEScan->setActiveScan(true);
+}
 void initWIFIAP()
 {
+    
     Serial.println(F("Starting WebServer example as AP..."));
 
     // Setup ESP32 as an Access Point
     WiFi.mode(WIFI_AP);
 
     // Set your desired SSID and Password for the Access Point
-    const char* ap_ssid = "ESP32-AP";
-    const char* ap_password = "12345678";  // Use a stronger password for a real application
+    const char* ap_ssid = "LoRa-Tester";
+    const char* ap_password = "123456789";  // Use a stronger password for a real application
 
     // Start the Access Point
     WiFi.softAP(ap_ssid, ap_password);
