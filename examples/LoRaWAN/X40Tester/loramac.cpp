@@ -2,13 +2,6 @@
 #include <lmic.h>
 #include <hal/hal.h>
 #include "boards.h"
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
-#include "BLEBeacon.h"
-#include "BLEEddystoneTLM.h"
-#include "BLEEddystoneURL.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
@@ -16,11 +9,6 @@
 
 WebServer server(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
-
-BLEScan* pBLEScan;
-int scanTime = 5; //In seconds
-uint16_t beconUUID = 0xFEAA;
-#define ENDIAN_CHANGE_U16(x) ((((x)&0xFF00)>>8) + (((x)&0xFF)<<8))
 
 // LSB mode
 static const u1_t PROGMEM DEVEUI[8] = { 0x2D, 0x13, 0xB2, 0x6C, 0xBE, 0x35, 0xE7, 0x10 };
@@ -115,19 +103,6 @@ static const unsigned char circleCheck[] U8X8_PROGMEM = {
     0xF0, 0xFF, 0xFF, 0x1F, 0xE0, 0xFF, 0xFF, 0x0F, 0x80, 0xFF, 0xFF, 0x03, 
     0x00, 0xFF, 0xFF, 0x01, 0x00, 0xFC, 0x7F, 0x00
 };
-static const unsigned char bleLogo[] U8X8_PROGMEM = {
-    0x00, 0xF0, 0x0F, 0x00, 0x00, 0xFC, 0x3F, 0x00, 0x00, 0xFF, 0xFF, 0x00, 
-    0x80, 0x7F, 0xFF, 0x01, 0x80, 0x7F, 0xFE, 0x01, 0xC0, 0x7F, 0xFC, 0x03, 
-    0xC0, 0x7F, 0xF8, 0x07, 0xE0, 0x7F, 0xF0, 0x07, 0xE0, 0x7F, 0xE2, 0x07, 
-    0xE0, 0x7B, 0xC6, 0x07, 0xE0, 0x71, 0x8E, 0x0F, 0xE0, 0x63, 0xC6, 0x0F, 
-    0xF0, 0x07, 0xE2, 0x0F, 0xF0, 0x0F, 0xF0, 0x0F, 0xF0, 0x1F, 0xF8, 0x0F, 
-    0xF0, 0x3F, 0xF8, 0x0F, 0xF0, 0x3F, 0xFC, 0x0F, 0xF0, 0x1F, 0xF8, 0x0F, 
-    0xF0, 0x0F, 0xF0, 0x0F, 0xF0, 0x07, 0xE2, 0x0F, 0xE0, 0x63, 0xC6, 0x0F, 
-    0xE0, 0x71, 0x8E, 0x0F, 0xE0, 0x7B, 0xC6, 0x07, 0xE0, 0x7F, 0xE2, 0x07, 
-    0xE0, 0x7F, 0xF0, 0x07, 0xC0, 0x7F, 0xF8, 0x07, 0xC0, 0x7F, 0xFC, 0x03, 
-    0x80, 0x7F, 0xFE, 0x01, 0x80, 0x7F, 0xFF, 0x01, 0x00, 0xFF, 0xFF, 0x00, 
-    0x00, 0xFC, 0x3F, 0x00, 0x00, 0xF0, 0x0F, 0x00
-};
 
 static osjob_t sendjob;
 static int spreadFactor = DR_SF7;
@@ -141,18 +116,6 @@ const long interval = 500;
 static String loraStatus = "";
 static String loraDebug = "Awaiting transmission...";
 static int fCnt = 0;
-
-static bool scanBLE = true;
-static bool scanWiFi = true;
-
-struct BeaconData {
-    std::string macAddress;
-    int rssi;
-};
-struct WiFiNetwork {
-    String ssid;
-    int rssi;
-};
 
 void os_getArtEui (u1_t *buf)
 {
@@ -168,28 +131,6 @@ void os_getDevKey (u1_t *buf)
 {
     memcpy_P(buf, APPKEY, 16);
 }
-
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
-    std::vector<BeaconData> beacons;
-public:
-    void onResult(BLEAdvertisedDevice advertisedDevice) {
-        if (advertisedDevice.getServiceDataUUID().equals(BLEUUID(beconUUID))==true) {  // found Eddystone UUID
-            // Serial.printf("is Eddystone: %d %s length %d\n", advertisedDevice.getServiceDataUUID().bitSize(), advertisedDevice.getServiceDataUUID().toString().c_str(),strServiceData.length());
-                BeaconData data = {advertisedDevice.getAddress().toString(), advertisedDevice.getRSSI()};
-                beacons.push_back(data);
-        }
-    }
-    void clearBeacons() {
-        beacons.clear();
-    }
-    std::vector<BeaconData> getSortedBeacons() {
-        std::sort(beacons.begin(), beacons.end(), [](const BeaconData & a, const BeaconData & b) -> bool {
-            return a.rssi > b.rssi;
-        });
-        return beacons;
-    }
-};
-MyAdvertisedDeviceCallbacks myCallbacks;
 
 void printArray(const u1_t *array, size_t length, bool msbFirst) {
     if (msbFirst) {
@@ -242,9 +183,6 @@ void updateJoiningAnimation() {
             u8g2->clearBuffer();
             u8g2->setFont(u8g2_font_unifont_t_symbols);
             u8g2->drawStr(20, 20, "Joining LNS");
-            // uint16_t symbols[5] = {0x25CB, 0x25D4, 0x25D1, 0x25D5, 0x25CF};
-            // uint16_t symbol = symbols[joiningAnimationIndex];
-            // u8g2->drawGlyph(64, 32, symbol);
             drawProgressCircle(*u8g2, joiningAnimationIndex);
             u8g2->sendBuffer();
             joiningAnimationIndex = (joiningAnimationIndex + 1) % 5;
@@ -252,94 +190,9 @@ void updateJoiningAnimation() {
     }
 }
 
-void showBeaconList()
-{
-    #ifdef HAS_DISPLAY
-        if (u8g2) {
-            u8g2->clearBuffer();
-            u8g2->setFont(u8g2_font_5x7_tf);
-            u8g2->drawStr(0, 12, "BLE Scan Results: ");
-            u8g2->drawLine(0, 18, 100, 18);
-            auto sortedBeacons = myCallbacks.getSortedBeacons();
-            for (int i = 0; i < sortedBeacons.size() && i < 5; i++) {
-                String mac = sortedBeacons[i].macAddress.c_str();
-                String lastSixMac = mac.substring(mac.length() - 8);
-                char buffer[30];
-                sprintf(buffer, "MAC: %s RSSI: %d", lastSixMac.c_str(), sortedBeacons[i].rssi);
-                u8g2->drawStr(0, 32+(i*8), buffer);
-            }
-            u8g2->sendBuffer();
-        }
-    #endif
+void sendResponse(uint8_t* data, uint8_t dataLen) {
+    LMIC_setTxData2(151, data, dataLen, 0); // Port number 151, no confirmation
 }
-
-void scanForBLEBeacons() {
-    if (!scanBLE) return;
-    myCallbacks.clearBeacons();
-    // Start BLE scan
-    #ifdef HAS_DISPLAY
-        if (u8g2) {
-            u8g2->clearBuffer();
-            u8g2->setFont(u8g2_font_unifont_t_symbols);
-            u8g2->drawStr(0, 20, "Scanning for BLE");
-            u8g2->drawXBMP(48, 28, 32, 32, bleLogo);
-            u8g2->sendBuffer();
-        }
-    #endif
-    Serial.printf("Scanning for BLE...");
-    BLEScanResults foundDevices = pBLEScan->start(scanTime);
-    Serial.printf("\nScan done! Devices found: %d\n", foundDevices.getCount());
-
-    // Retrieve sorted beacons and print top 5
-    auto sortedBeacons = myCallbacks.getSortedBeacons();
-    Serial.println("Top 5 Beacons:");
-    for (int i = 0; i < sortedBeacons.size() && i < 5; i++) {
-        Serial.print("MAC: "); Serial.print(sortedBeacons[i].macAddress.c_str());
-        Serial.print(", RSSI: "); Serial.println(sortedBeacons[i].rssi);
-        delay(10);
-    }
-
-    // Clear results for the next scan
-    pBLEScan->clearResults();
-}
-// void scanForWifi() {
-//     #ifdef HAS_DISPLAY
-//         if (u8g2) {
-//             u8g2->clearBuffer();
-//             u8g2->drawStr(0, 12, "Scanning for Wi-Fi...");
-//             u8g2->sendBuffer();
-//         }
-//     #endif
-//     std::vector<WiFiNetwork> networks;
-//     int n = WiFi.scanNetworks();
-//     Serial.println("scan done");
-//     if (n == 0) {
-//         Serial.println("no networks found");
-//     } else {
-//         Serial.print(n);
-//         Serial.println(" networks found");
-//         for (int i = 0; i < n; ++i) {
-//             WiFiNetwork network = {
-//                 WiFi.SSID(i),
-//                 WiFi.RSSI(i)
-//             };
-//             networks.push_back(network);
-//         }
-
-//         // Optional: Sort the networks by RSSI
-//         std::sort(networks.begin(), networks.end(), [](const WiFiNetwork& a, const WiFiNetwork& b) {
-//             return a.rssi > b.rssi;
-//         });
-
-//         // Print the sorted networks
-//         for (int i = 0; i < 5; ++i) {
-//             Serial.print("MAC: "); Serial.print(networks[i].ssid);
-//             Serial.print(", RSSI: "); Serial.println(networks[i].rssi);
-//             delay(10);
-//         }
-//     }
-//     WiFi.scanDelete(); // Free up resources by deleting the scan
-// }
 void do_send(osjob_t *j)
 {
     if (joinStatus == EV_JOINING) {
@@ -351,36 +204,37 @@ void do_send(osjob_t *j)
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
         Serial.println(F("OP_TXRXPEND,sending ..."));
-        static uint8_t mydata[] = "Hello, world!";
-        static uint8_t myBinaryData[] = {
-            0xbb, 0x03, 0x13, 0x48, 0x2d, 0x64, 0x20, 0x9b,
-            0x42, 0x96, 0x0e, 0x53, 0x05, 0x00, 0x00, 0x00,
+        static uint8_t payloadData[] = {
+            0xbb, 0x03, 0x13, 0xF2, 0x26, 0x8C, 0xFE, 0x80,
+            0xAA, 0xB4, 0x1F, 0xFC, 0x08, 0x00, 0x00, 0x00,
             0x15, 0x02, 0x4a, 0x10, 0x65, 0xd1, 0x81, 0x13,
             0x02, 0xaa, 0x45, 0x13, 0xd1, 0x81, 0x16, 0x02,
             0x90, 0xc7, 0xe7, 0xcf, 0x91, 0x12
         };
-// 0x4F, 0x14 (5 HSD) was 0x53, 0x05
-        //
-        scanForBLEBeacons();
-        // scanForWifi();
-        // Clear results for the next scan
-        pBLEScan->clearResults();
-        //
-        // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, myBinaryData, sizeof(myBinaryData), 0);
-        os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+        // 0x4F, 0x14 (5 HSD) was 0x53, 0x05
 
-#ifdef HAS_DISPLAY
-        // if (u8g2) {
-        //     char buf[256];
-        //     u8g2->clearBuffer();
-        //     snprintf(buf, sizeof(buf), "[%lu]data sending!", millis() / 1000);
-        //     u8g2->drawStr(0, 12, buf);
-        //     u8g2->sendBuffer();
-        // }
-        showBeaconList();
-#endif
+        // GPS COORDS FOR ADNOC
+        // Long 0x48 0x2d 0x64 0x20
+        // Lat 0x9b, 0x42, 0x96, 0x0e
+        // HSD 0x53, 0x05, 0x00, 0x00
+
+        // GPS COORDS FOR OFFICE
+        // Latitude Hex: 0x80, 0xAA, 0xB4, 0x1F
+        // Longitude Hex: 0xF2, 0x26, 0x8C, 0xFE
+        // HSD Hex: 0xFC, 0x08, 0x00, 0x00
+
+        LMIC_setTxData2(1, payloadData, sizeof(payloadData), 0);
+        os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
     }
+}
+
+void printFrame(uint8_t* frame, uint8_t length) {
+    Serial.print(F("Frame: "));
+    for (uint8_t i = 0; i < length; i++) {
+        Serial.print(frame[i], HEX);
+        Serial.print(" ");
+    }
+    Serial.println();
 }
 
 void onEvent (ev_t ev)
@@ -394,17 +248,25 @@ void onEvent (ev_t ev)
 
         if (LMIC.txrxFlags & TXRX_ACK) {
             Serial.println(F("Received ack"));
-            // loraStatus =  "Received ACK.";
         }
-        loraDebug = "RSSI: -" + String(LMIC.rssi) + " SNR: "+ String(LMIC.snr);;
+        loraDebug = "RSSI: -" + String(LMIC.rssi) + " SNR: " + String(LMIC.snr);
 
         if (LMIC.dataLen) {
-            // data received in rx slot after tx
-            Serial.print(F("Data Received: "));
-            Serial.println(LMIC.dataBeg-1);
-            Serial.println(F(" bytes of payload"));
+            // Data received in rx slot after tx
+            Serial.println(F("Data Received: "));
+            printFrame(LMIC.frame + LMIC.dataBeg, LMIC.dataLen);
+
+            // Check if the received data is 0x55, 0x01, 0x01 or 0x55, 0x01, 0x00
+            if (LMIC.dataLen == 3 && LMIC.frame[LMIC.dataBeg] == 0x55 &&
+                LMIC.frame[LMIC.dataBeg + 1] == 0x01 &&
+                (LMIC.frame[LMIC.dataBeg + 2] == 0x01 || LMIC.frame[LMIC.dataBeg + 2] == 0x00)) {
+                
+                // Send the same data back on port 151
+                sendResponse(LMIC.frame + LMIC.dataBeg, 3);
+            }
         }
-        // Schedule next transmission
+
+        // Schedule next transmission of normal payload
         os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
         break;
     case EV_JOINING:
@@ -445,8 +307,7 @@ void onEvent (ev_t ev)
         }
 #endif
         delay(3);
-        // Disable link check validation (automatically enabled
-        // during join, but not supported by TTN at this time).
+        // Disable link check validation (automatically enabled).
         LMIC_setLinkCheckMode(0);
 
         break;
@@ -469,19 +330,6 @@ void onEvent (ev_t ev)
     doc["loraStatus"] = loraStatus;
     doc["loraDebug"] = loraDebug;
     doc["fCnt"] = LMIC.seqnoUp;
-
-    // Create a JSON array
-    JsonArray array = doc.createNestedArray("ble");
-
-    auto sortedBeacons = myCallbacks.getSortedBeacons();
-    for (int i = 0; i < sortedBeacons.size() && i < 5; i++) {
-        JsonObject device1 = array.createNestedObject();
-        device1["id"] = i+1;
-        device1["mac"] = sortedBeacons[i].macAddress.c_str();
-        device1["rssi"] = sortedBeacons[i].rssi;
-        delay(10);
-    }
-
     String output;
     serializeJson(doc, output);
     webSocket.broadcastTXT(output);
@@ -527,48 +375,53 @@ void setupLMIC(void)
     Serial.println(F("APPKEY"));
     printArray(APPKEY, sizeof(APPKEY) / sizeof(APPKEY[0]), true);
 
-    //Init Wifi
-    // WiFi.mode(WIFI_STA);
-    // WiFi.disconnect();
-
     // Start job
     LMIC_startJoining();
 
     do_send(&sendjob);
 }
 
-void stopLORA()
+void restartLORA()
 {
-    JsonDocument doc;
-    String output;
-    doc["loraStatus"] = "Shutting down...";
-    doc["loraDebug"] = "Shutting down...";
-    doc["fCnt"] = 0;
-    JsonArray array = doc.createNestedArray("ble");
-    JsonObject device1 = array.createNestedObject();
-    device1["id"] = 1;
-    device1["mac"] = "NO DATA";
-    device1["rssi"] = "NO DATA";
-    serializeJson(doc, output);
-    webSocket.broadcastTXT(output);
-    LMIC_shutdown();
-}
+    Serial.println(F("Resetting LORA..."));
+    LMIC_reset();
 
-void startLORA()
-{
-    JsonDocument doc;
-    String output;
-    doc["loraStatus"] = "Starting Lora...";
-    doc["loraDebug"] = "Starting Lora...";
-    doc["fCnt"] = 0;
-    JsonArray array = doc.createNestedArray("ble");
-    JsonObject device1 = array.createNestedObject();
-    device1["id"] = 1;
-    device1["mac"] = "NO DATA";
-    device1["rssi"] = "NO DATA";
-    serializeJson(doc, output);
-    webSocket.broadcastTXT(output);
-    setupLMIC();
+    LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100);
+
+    LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(1, 868300000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI);      // g-band
+    LMIC_setupChannel(2, 868500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(3, 867100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(4, 867300000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(5, 867500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(6, 867700000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
+
+    // Disable link check validation
+    LMIC_setLinkCheckMode(0);
+
+    // TTN uses SF9 for its RX2 window.
+    LMIC.dn2Dr = DR_SF9;
+
+    // Set data rate and transmit power for uplink (note: txpow seems to be ignored by the library)
+    LMIC_setDrTxpow(spreadFactor, 14);
+
+    Serial.println(F("DevEUI"));
+    printArray(DEVEUI, sizeof(DEVEUI) / sizeof(DEVEUI[0]), false);
+
+    // Print APPEUI
+    Serial.println(F("APPEUI"));
+    printArray(APPEUI, sizeof(APPEUI) / sizeof(APPEUI[0]), false);
+
+    // Print APPKEY
+    Serial.println(F("APPKEY"));
+    printArray(APPKEY, sizeof(APPKEY) / sizeof(APPKEY[0]), true);
+
+    // Start job
+    LMIC_startJoining();
+
+    do_send(&sendjob);
 }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
@@ -583,15 +436,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                 IPAddress ip = webSocket.remoteIP(num);
                 Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
                  // SEND WEBSOCKET NOW
-            
                 doc["loraStatus"] = loraStatus;
                 doc["loraDebug"] = loraDebug;
                 doc["fCnt"] = LMIC.seqnoUp;
-                JsonArray array = doc.createNestedArray("ble");
-                JsonObject device1 = array.createNestedObject();
-                device1["id"] = 1;
-                device1["mac"] = "NO DATA";
-                device1["rssi"] = "NO DATA";
                 serializeJson(doc, output);
                 webSocket.broadcastTXT(output);
             }
@@ -599,11 +446,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         case WStype_TEXT:
             Serial.printf("[%u] get Text: %s\n", num, payload);
             deserializeJson(doc, payload);
-            if (doc.containsKey("action") && strcmp(doc["action"], "start") == 0) {
-                startLORA();
-            }
-            else if (doc.containsKey("action") && strcmp(doc["action"], "stop") == 0) {
-                stopLORA();
+            if (doc.containsKey("action") && strcmp(doc["action"], "restart") == 0) {
+                restartLORA();
             }
             break;
         case WStype_BIN:
@@ -635,18 +479,9 @@ void Task2code(void * pvParameters){
   }
 }
 
-void initBLE()
-{
-    // Init BLE
-    BLEDevice::init("");
-    pBLEScan = BLEDevice::getScan();
-    pBLEScan->setAdvertisedDeviceCallbacks(&myCallbacks);
-    pBLEScan->setActiveScan(true);
-}
 void initWIFIAP()
 {
-    
-    Serial.println(F("Starting WebServer example as AP..."));
+    Serial.println(F("Starting WebServer as AP..."));
 
     // Setup ESP32 as an Access Point
     WiFi.mode(WIFI_AP);

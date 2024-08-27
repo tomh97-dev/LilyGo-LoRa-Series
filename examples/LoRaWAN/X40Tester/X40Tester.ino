@@ -11,7 +11,6 @@ void setup()
     Serial.println("LoRa Receiver");
     setupLMIC();
     initWIFIAP();
-    initBLE();
     initWebsocket();
 
     xTaskCreatePinnedToCore(
@@ -37,6 +36,6 @@ void setup()
 
 void loop() {
     // Empty loop
-    delay(1000); // A delay to prevent it from spinning.
+    delay(100); // A delay to prevent it from spinning.
     // Or you can add non-critical background tasks here if needed.
 }
