@@ -20,6 +20,7 @@
 #include "config.h"
 #include <stdint.h>
 #include <stdio.h>
+#include "esp_log.h"
 
 #ifdef __cplusplus
 extern "C"{
@@ -259,7 +260,7 @@ u2_t os_crc16 (xref2u1_t d, uint len);
 
     // Declare a table
     #define CONST_TABLE(type, name) const type RESOLVE_TABLE(name)
-    #define lmic_printf printf
+    #define lmic_printf ets_printf
 #endif
 
 // ======================================================================

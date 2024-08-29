@@ -7,10 +7,6 @@
 #include <WebSocketsServer.h>
 #include "ArduinoJson.h"
 
-#define REGION_EU868 1
-#define REGION_US915_0 2
-#define REGION_US915_1 3
-
 WebServer server(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
 
@@ -116,9 +112,6 @@ int joiningAnimationIndex = 0;
 bool isJoining = false;
 unsigned long previousMillis = 0;
 const long interval = 500;
-
-int region = REGION_EU868;  // Set this to REGION_EU868, REGION_US915_0 or REGION_US915_1
-bool enableADR = true;      // Set to true to enable ADR, false to disable
 
 static String loraStatus = "";
 static String loraDebug = "Awaiting transmission...";
@@ -342,67 +335,46 @@ void onEvent (ev_t ev)
     webSocket.broadcastTXT(output);
 }
 
-void setupEU868Channels() {
-    LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
-    LMIC_setupChannel(1, 868300000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI); // g-band
-    LMIC_setupChannel(2, 868500000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
-    LMIC_setupChannel(3, 867100000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
-    LMIC_setupChannel(4, 867300000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
-    LMIC_setupChannel(5, 867500000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
-    LMIC_setupChannel(6, 867700000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
-    LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
-    LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK, DR_FSK), BAND_MILLI);   // g2-band
-}
+// void setupEU868Channels() {
+//     LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+//     LMIC_setupChannel(1, 868300000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI); // g-band
+//     LMIC_setupChannel(2, 868500000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+//     LMIC_setupChannel(3, 867100000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+//     LMIC_setupChannel(4, 867300000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+//     LMIC_setupChannel(5, 867500000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+//     LMIC_setupChannel(6, 867700000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+//     LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+//     LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK, DR_FSK), BAND_MILLI);   // g2-band
+// }
 
-void setupUS915_0Channels() {
-    // Setup subband 1 (channels 0-7)
-    for (int i = 0; i < 8; i++) {
-        LMIC_setupChannel(i, 902300000 + i * 200000, DR_RANGE_MAP(DR_SF10, DR_SF7), BAND_CENTI);
-    }
-    // Additional channel for RX2 window (optional)
-    LMIC_setupChannel(65, 904600000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);
-}
+void setupLMIC(void)
+{
+    // Set clock error
+    // LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100);
+    LMIC_setClockError(MAX_CLOCK_ERROR * 5 / 100);  // Allow for 5% clock error
 
-void setupUS915_1Channels() {
-    // Setup subband 2 (channels 8-15)
-    for (int i = 0; i < 8; i++) {
-        LMIC_setupChannel(i, 903300000 + i * 200000, DR_RANGE_MAP(DR_SF10, DR_SF7), BAND_CENTI);
-    }
-    // Additional channel for RX2 window (optional)
-    LMIC_setupChannel(65, 904600000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);
-}
+    // Enable or disable ADR
+    // LMIC_setAdrMode(true);
 
-void setupLMIC(void) {
     // LMIC init
     os_init();
 
     // Reset the MAC state. Session and pending data transfers will be discarded.
     LMIC_reset();
 
-    // Set clock error
-    LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100);
-
-    // Setup channels based on region
-    if (region == REGION_EU868) {
-        setupEU868Channels();
-        LMIC.dn2Dr = DR_SF9;  // TTN uses SF9 for RX2 in EU868
-    } else if (region == REGION_US915_0) {
-        setupUS915_0Channels();
-        LMIC.dn2Dr = DR_SF12; // SF12 is typically used for RX2 in US915
-    } else if (region == REGION_US915_1) {
-        setupUS915_1Channels();
-        LMIC.dn2Dr = DR_SF12; // SF12 is typically used for RX2 in US915
-    }
-
-    Serial.printf("Region: [%u]\n", region);
-    // Enable or disable ADR
-    LMIC_setAdrMode(enableADR);
-
-    // Disable link check validation
+    // Disable link-check mode and ADR, because ADR tends to complicate testing.
     LMIC_setLinkCheckMode(0);
 
-    // Set data rate and transmit power for uplink
-    LMIC_setDrTxpow(spreadFactor, 14);
+    // Set the data rate to Spreading Factor 7.  This is the fastest supported rate for 125 kHz channels, and it
+    // minimizes air time and battery power. Set the transmission power to 14 dBi (25 mW).
+    LMIC_setDrTxpow(DR_SF7,14);
+
+    // in the US, with TTN, it saves join time if we start on subband 1 (channels 8-15). This will
+    // get overridden after the join by parameters from the network. If working with other
+    // networks or in other regions, this will need to be changed.
+    LMIC_selectSubBand(0);
+
+    lmic_printf("Rx Delay= = %lu seconds\n", LMIC.rxDelay);
 
     // Print LoRaWAN keys
     Serial.println(F("DevEUI"));
@@ -415,58 +387,10 @@ void setupLMIC(void) {
     printArray(APPKEY, sizeof(APPKEY) / sizeof(APPKEY[0]), true);
 
     // Start job
-    LMIC_startJoining();
+    LMIC_startJoining(); // auto does it apparently??? it doesnt...
 
     do_send(&sendjob);
 }
-
-// void restartLORA()
-// {
-//     LMIC.opmode = OP_SHUTDOWN;
-//     region = REGION_US915_0;
-//     Serial.printf("Restarting!:\n");
-//     LMIC_reset();
-
-//     // Set clock error
-//     LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100);
-
-//     // Setup channels based on region
-//     if (region == REGION_EU868) {
-//         setupEU868Channels();
-//         LMIC.dn2Dr = DR_SF9;  // TTN uses SF9 for RX2 in EU868
-//     } else if (region == REGION_US915_0) {
-//         setupUS915_0Channels();
-//         LMIC.dn2Dr = DR_SF12; // SF12 is typically used for RX2 in US915
-//     } else if (region == REGION_US915_1) {
-//         setupUS915_1Channels();
-//         LMIC.dn2Dr = DR_SF12; // SF12 is typically used for RX2 in US915
-//     }
-
-//     Serial.printf("Region: [%u]\n", region);
-//     // Enable or disable ADR
-//     LMIC_setAdrMode(enableADR);
-
-//     // Disable link check validation
-//     LMIC_setLinkCheckMode(0);
-
-//     // Set data rate and transmit power for uplink
-//     LMIC_setDrTxpow(spreadFactor, 14);
-
-//     // Print LoRaWAN keys
-//     Serial.println(F("DevEUI"));
-//     printArray(DEVEUI, sizeof(DEVEUI) / sizeof(DEVEUI[0]), false);
-
-//     Serial.println(F("APPEUI"));
-//     printArray(APPEUI, sizeof(APPEUI) / sizeof(APPEUI[0]), false);
-
-//     Serial.println(F("APPKEY"));
-//     printArray(APPKEY, sizeof(APPKEY) / sizeof(APPKEY[0]), true);
-
-//     // Start job
-//     LMIC_startJoining();
-
-//     do_send(&sendjob);
-// }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
     JsonDocument doc;
